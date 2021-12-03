@@ -14,13 +14,13 @@ from PIL import Image
 import frameExtractor
 from handshape_feature_extractor import HandShapeFeatureExtractor
 
-# model
+# model used for tracking human body position
 FILE_MODEL = 'multi_person_mobilenet_v1_075_float.tflite'
 
-# Here you can define your traindata_original values
+# horizontal and vertical size when cropping original test videos
 h, w = 200, 200
 
-# adjustments for hand extraction
+# adjustments of x, y coordinates for hand extraction
 H_ADJUST = 80
 V_ADJUST = 180
 
@@ -34,6 +34,7 @@ IMAGE_RESIZE = 0.8
 test = []
 train = []
 
+# 26 alphabet in order, initialized in main
 train_dict = {}
 
 # result alphabet
@@ -147,25 +148,27 @@ def crop_video(file_folder):
                 # left arm
                 cv2.polylines(img, [np.array([keypoints[5], keypoints[7], keypoints[9]])], False, (0, 255, 0), 0)
                 # right arm, will be used for crop image for ASL Finger Spelling
+                # not displaying to increase accuracy
                 # cv2.polylines(img, [np.array([keypoints[6], keypoints[8], keypoints[10]])], False, (0, 0, 255), 0)
 
-            # display result
+            # display original video
             cv2.imshow('original', img)
 
             # ===========================================================
             # This section will crop the video and save hand section
             x = (keypoints[10][0] - H_ADJUST) if (keypoints[10][0] - H_ADJUST) > 0 else 0
             y = (keypoints[10][1] - V_ADJUST) if (keypoints[10][1] - V_ADJUST) > 0 else 0
-            # CropPing the frame
+            # Cropping the frame
             crop_frame = img[y:y + h, x:x + w]
 
             # Saving from the desired frames
             # if 15 <= cnt <= 90:
             #    out.write(crop_frame)
 
-            # save the result video
+            # save the result video after cropping
             out.write(crop_frame)
 
+            # display the video after cropped
             cv2.imshow('cropped', crop_frame)
             frame_count += 1
             # ===========================================================
@@ -177,6 +180,7 @@ def crop_video(file_folder):
         cap.release()
 
 
+# get all mp4 videos from file_folder
 def get_video_files(file_folder):
     if not path.exists(file_folder):
         return []
@@ -219,6 +223,7 @@ def calc_result(test_vec, train_vec):
     f.close()
 
 
+# remove all files from test_frame and test folder
 def remove_file():
     dir = os.path.join(os.getcwd(), 'test_frame')
     for f in glob.glob(os.path.join(dir, "*")):
@@ -236,6 +241,7 @@ if __name__ == '__main__':
     remove_file()
 
     start = time.time()
+    # commented, using ASL alphabet train image instead
     # crop_video('traindata_original')
     crop_video('test_original')
 
