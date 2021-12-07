@@ -8,19 +8,20 @@ from pathlib import Path
 import numpy as np
 import scipy.spatial as sp
 import tensorflow as tf
-from cv2 import cv2
-from PIL import Image
+import cv2
+#from cv2 import cv2
+#from PIL import Image
 
 import frameExtractor
 from handshape_feature_extractor import HandShapeFeatureExtractor
 
-# model used for tracking human body position
+# model
 FILE_MODEL = 'multi_person_mobilenet_v1_075_float.tflite'
 
-# horizontal and vertical size when cropping original test videos
+# Here you can define your traindata_original values
 h, w = 200, 200
 
-# adjustments of x, y coordinates for hand extraction
+# adjustments for hand extraction
 H_ADJUST = 80
 V_ADJUST = 180
 
@@ -34,11 +35,11 @@ IMAGE_RESIZE = 0.8
 test = []
 train = []
 
-# 26 alphabet in order, initialized in main
 train_dict = {}
 
 # result alphabet
 ALPHABET = list(string.ascii_uppercase)
+print(ALPHABET)
 
 
 def get_angle(v1, v2):
@@ -55,11 +56,21 @@ def crop_video(file_folder):
     # mp4 video 30 fps
     # for each gesture will be displayed 3 second?
 
-    crop_path = os.path.join(os.getcwd(),
-                              'traindata' if file_folder == 'traindata_original' else 'test')
+    #crop_path = os.path.join(os.getcwd(),
+    #                              'traindata' if file_folder == 'traindata_original' else 'test')
+    
+    if file_folder == 'traindata_original':
+        folder = 'traindata'
+    elif file_folder == 'test_original':
+        folder = 'test'
+    else:
+        folder = 'test_word'
+
+    crop_path = os.path.join(os.getcwd(),folder)
 
     for videoFile in get_video_files(file_folder):
         saving_path = crop_path + "//" + Path(os.path.realpath(videoFile)).stem + ".mp4"
+        #interpreter = tf.contrib.lite.Interpreter(model_path=FILE_MODEL)
         interpreter = tf.lite.Interpreter(model_path=FILE_MODEL)
         interpreter.allocate_tensors()
 
@@ -148,28 +159,26 @@ def crop_video(file_folder):
                 # left arm
                 cv2.polylines(img, [np.array([keypoints[5], keypoints[7], keypoints[9]])], False, (0, 255, 0), 0)
                 # right arm, will be used for crop image for ASL Finger Spelling
-                # not displaying to increase accuracy
                 # cv2.polylines(img, [np.array([keypoints[6], keypoints[8], keypoints[10]])], False, (0, 0, 255), 0)
 
-            # display original video
-            cv2.imshow('original', img)
+            # display result
+            #cv2.imshow('original', img)
 
             # ===========================================================
             # This section will crop the video and save hand section
             x = (keypoints[10][0] - H_ADJUST) if (keypoints[10][0] - H_ADJUST) > 0 else 0
             y = (keypoints[10][1] - V_ADJUST) if (keypoints[10][1] - V_ADJUST) > 0 else 0
-            # Cropping the frame
+            # CropPing the frame
             crop_frame = img[y:y + h, x:x + w]
 
             # Saving from the desired frames
             # if 15 <= cnt <= 90:
             #    out.write(crop_frame)
 
-            # save the result video after cropping
+            # save the result video
             out.write(crop_frame)
 
-            # display the video after cropped
-            cv2.imshow('cropped', crop_frame)
+            #cv2.imshow('cropped', crop_frame)
             frame_count += 1
             # ===========================================================
 
@@ -180,7 +189,6 @@ def crop_video(file_folder):
         cap.release()
 
 
-# get all mp4 videos from file_folder
 def get_video_files(file_folder):
     if not path.exists(file_folder):
         return []
@@ -189,7 +197,7 @@ def get_video_files(file_folder):
 
 def calc_dataset(file_folder):
     frame_count = 0
-    model = HandShapeFeatureExtractor.get_instance()
+    model = HandShapeFeatureExtractor.get_instance()    
     frame_path = os.path.join(os.getcwd(),
                 'traindata_frame' if file_folder == 'traindata' else 'test_frame')
 
@@ -198,6 +206,29 @@ def calc_dataset(file_folder):
         frame_count += 1
 
     frame_files = glob.glob(os.path.join(frame_path, '*.png'))
+    frame_files.sort()
+    #print(frame_files)
+
+    vectors = []
+    for frame_file in frame_files:
+        img = cv2.cvtColor(cv2.imread(frame_file), cv2.COLOR_BGR2GRAY)
+        results = model.extract_feature(img)[0]
+        vectors.append(results)
+    return vectors
+
+def calc_dataset_word(file_folder):
+    frame_count = 0
+    model = HandShapeFeatureExtractor.get_instance()    
+    frame_path = os.path.join(os.getcwd(),'test_word_frame')
+
+    for videoFile in get_video_files(file_folder):
+        frameExtractor.frameExtractorWord(videoFile, frame_path, frame_count)
+        frame_count += 1
+
+    frame_files = glob.glob(os.path.join(frame_path, '*.png'))
+    frame_files.sort()
+    #print(frame_files)
+
 
     vectors = []
     for frame_file in frame_files:
@@ -212,7 +243,6 @@ def calc_result(test_vec, train_vec):
     training_data = np.array(train_vec, dtype=float)
 
     f = open('Results.csv', 'w')
-
     for each_test in test_data:
         lst = []
         for each_train in training_data:
@@ -223,7 +253,6 @@ def calc_result(test_vec, train_vec):
     f.close()
 
 
-# remove all files from test_frame and test folder
 def remove_file():
     dir = os.path.join(os.getcwd(), 'test_frame')
     for f in glob.glob(os.path.join(dir, "*")):
@@ -234,6 +263,72 @@ def remove_file():
         os.remove(f)
 
 
+def detect_word():
+    test_word = calc_dataset_word('test_word')
+    train = calc_dataset('traindata')
+    test_data = np.array(test_word, dtype=float)
+    training_data = np.array(train, dtype=float)
+    f = open('Results_Word.csv', 'w')
+
+    test_word = []
+    for test_frame in test_data:
+        lst = []
+        gesture_num_temp = 0
+        for i,each_train in enumerate(training_data):
+            lst.append(sp.distance.cosine(test_frame, each_train))
+            #gesture_num = lst.index(min(lst))
+        #gesture_str = ALPHABET[int(gesture_num/5)]
+        if 1:
+            # find 5 ground truth that is closest to the test sample    
+            lst = np.array(lst)
+            kNN = lst.argsort()[:5]
+            # every 5 ground truth is from the same letter， divide the number by 5 to get the truth label
+            kNN = [x//5 for x in kNN]
+            print(kNN)            
+            # k-nearest neighber: for the 5 closest ground truth, if none of them are the same, test sample 
+            # is labeled the same as the closest ground truth; if any of them are the same, test sample is
+            # labeled the same as the ground truth with the most number of occourance
+            i=j=temp = 0
+            for cnt,N in enumerate(kNN):
+                i = kNN.count(N)
+                if i > j:
+                    j = i
+                    temp = kNN[cnt]
+            if j == 1:
+                temp = kNN[0]
+            gesture_str = ALPHABET[temp]
+            test_word.append(gesture_str)
+    
+    # sliding window of size 3 to filter out the jitters
+    test_word_filtered = []
+    k = 0
+    window_len = 3
+    while k < len(test_word) - window_len + 1:
+        #print(test_word[k:k+window_len])
+        uniques,counts = np.unique(np.array(test_word[k:k+window_len]),return_counts = True)
+        if len(uniques) == window_len:
+            test_word_filtered.append(test_word[k])
+        else:
+            #print(uniques,counts)
+            j = next(x for x, val in enumerate(counts) if val > 1)
+            test_word_filtered.append(uniques[j])
+        k += 1
+    #print(test_word_filtered)
+    
+    # any changing in the prediction will output a letter for the final word
+    final_word = []
+    final_word.append(test_word_filtered[0])
+    f.write(final_word + '\n')
+    for i in range(len(test_word_filtered)-1):
+        if test_word_filtered[i] != test_word_filtered[i+1]:
+            final_word.append(test_word_filtered[i+1])
+            f.write(test_word_filtered[i+1] + '\n')
+    print(final_word)
+    f.close()    
+
+
+
+
 if __name__ == '__main__':
     for i in range(65, 91):
         train_dict[chr(i)] = []
@@ -241,14 +336,19 @@ if __name__ == '__main__':
     remove_file()
 
     start = time.time()
-    # commented, using ASL alphabet train image instead
     # crop_video('traindata_original')
-    crop_video('test_original')
+    if 0:
+        crop_video('test_original')
+    
+        train = calc_dataset('traindata')
+        test = calc_dataset('test')
+        calc_result(test, train)
 
-    train = calc_dataset('traindata')
-    test = calc_dataset('test')
+        crop_video('test_word_original')
 
-    calc_result(test, train)
+    detect_word()
+
+    
     end = time.time()
     print(end - start)
 
