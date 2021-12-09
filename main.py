@@ -337,14 +337,13 @@ if __name__ == '__main__':
 
     start = time.time()
     # crop_video('traindata_original')
-    if 0:
-        crop_video('test_original')
-    
-        train = calc_dataset('traindata')
-        test = calc_dataset('test')
-        calc_result(test, train)
+    crop_video('test_original')
 
-        crop_video('test_word_original')
+    train = calc_dataset('traindata')
+    test = calc_dataset('test')
+    calc_result(test, train)
+
+    crop_video('test_word_original')
 
     detect_word()
 
